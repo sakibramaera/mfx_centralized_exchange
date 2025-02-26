@@ -1,12 +1,12 @@
 use crate::models::user_model::User;
-use crate::utils::auth::Claims;
+// use crate::utils::auth::Claims;
 use crate::utils::auth::{generate_jwt, hash_password, verify_password,send_verification_email, send_verification_sms,generate_otp};
-use jsonwebtoken::{decode, DecodingKey, Validation};
-use sqlx::error::ErrorKind;
+// use jsonwebtoken::{decode, DecodingKey, Validation};
+// use sqlx::error::ErrorKind;
 use sqlx::PgPool;
-use std::process::id;
-use tokio::task::id as other_id;
-use tonic::{metadata::MetadataValue, Request, Response, Status};
+// use std::process::id;
+// use tokio::task::id as other_id;
+use tonic::{Request, Response, Status};
 use uuid::Uuid;
 use user:: user_service_server::{UserService,UserServiceServer};
 use user::{SignupRequest, SignupResponse,
@@ -14,12 +14,12 @@ use user::{SignupRequest, SignupResponse,
     VerifyUserRequest,VerifyUserResponse,
     ResendVerificationRequest,ResendVerificationResponse, 
 };
-use rand::distributions::{Alphanumeric, Distribution};
-use rand::Rng;
-use std::time::{Duration, SystemTime};
-use chrono::NaiveDateTime;
+// use rand::distributions::{Alphanumeric};
+// use rand::Rng;
+// use std::time::{Duration, SystemTime};
+// use chrono::NaiveDateTime;
 use chrono::Utc;
-use std::error::Error;
+// use std::error::Error;
 
 pub mod user {
     tonic::include_proto!("user");

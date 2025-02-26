@@ -7,11 +7,11 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use lettre::{Message, SmtpTransport, Transport};
 use lettre::transport::smtp::authentication::Credentials;
-use lettre::message::{SinglePart, header};
+use lettre::message::{header};
 use std::error::Error;
 // use tokio::runtime::Runtime;
 use reqwest::Client;
-use serde_json::json;
+// use serde_json::json;
 use crate::env;
 use rand::Rng;
 
