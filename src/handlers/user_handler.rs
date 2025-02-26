@@ -129,109 +129,6 @@ async fn signup(&self, request: Request<SignupRequest>) -> Result<Response<Signu
         id: id.to_string(),
     }))
 }
-async fn verify_user(&self, request: Request<VerifyUserRequest>) -> Result<Response<VerifyUserResponse>, Status> {
-    let req = request.into_inner();
-
-    // Fetch user_id and expiration_time from `user_verifications`
-    let verification = sqlx::query!(
-        "SELECT user_id, expiration_time FROM user_verifications WHERE verification_code = $1",
-        req.verification_code
-    )
-    .fetch_optional(&self.db)
-    .await
-    .map_err(|_| Status::internal("Database error"))?;
-
-    match verification {
-        Some(v) => {
-            let naive_current_time = Utc::now().naive_utc();
-            if naive_current_time > v.expiration_time {
-                return Err(Status::invalid_argument("Verification code expired"));
-            }
-
-            // Update user verification status
-            sqlx::query!(
-                "UPDATE users SET is_verified = true WHERE id = $1",
-                v.user_id
-            )
-            .execute(&self.db)
-            .await
-            .map_err(|_| Status::internal("Failed to update user verification status"))?;
-
-            // Remove verification record
-            sqlx::query!(
-                "DELETE FROM user_verifications WHERE verification_code = $1",
-                req.verification_code
-            )
-            .execute(&self.db)
-            .await
-            .map_err(|_| Status::internal("Failed to remove verification code"))?;
-
-            // Generate JWT token
-            let token = generate_jwt(&v.user_id, &self.jwt_secret, "user")
-                .map_err(|_| Status::internal("Failed to generate token"))?;
-
-            Ok(Response::new(VerifyUserResponse {
-                message: "User verified successfully".to_string(),
-                token,
-            }))
-        }
-        None => Err(Status::not_found("Invalid verification code")),
-    }
-}
-// Login API
-async fn login(&self, request: Request<LoginRequest>) -> Result<Response<LoginResponse>, Status> {
-        let req = request.into_inner();
-
-         // ✅ Determine which identifier is provided
-            let identifier = if !req.email.is_empty() {
-                req.email
-                }else if !req.mobile_number.is_empty() {
-                req.mobile_number
-                } else {
-                return Err(Status::invalid_argument("Please provide email or mobile number."));
-                };
-
-        // ✅ Fetch user by email, or mobile number
-        let user = sqlx::query_as!(
-            User,
-            "SELECT id, email, password, mobile_number, role , is_verified
-            FROM users WHERE email = $1 OR mobile_number = $1",
-            identifier 
-        )
-        .fetch_optional(&self.db) // ✅ Better error handling
-        .await
-        .map_err(|_| Status::internal("Database error"))?; 
-
-        // let user = match user {
-        //     Some(user) => user,
-        //     None => return Err(Status::not_found("Email does not exist. Please sign up first..")),
-        // };
-
-
-        // ✅ If user not found, return error
-        let user = user.ok_or_else(|| Status::unauthenticated("Email does not exist. Please sign up first.."))?;
-
-        // ✅ Verify password
-        match verify_password(&user.password, &req.password) {
-        Ok(true) => {}, // Password matches, continue
-        _ => return Err(Status::unauthenticated("Login failed. Please check your credentials.")),
-        }
-
-        if !user.is_verified.unwrap_or(false) {
-        return Err(Status::permission_denied("User not verified"));
-        }
-
-        // ✅ Generate JWT token
-        let token = generate_jwt(&user.id,user.role.as_deref().unwrap_or("user"),&self.jwt_secret)
-            .map_err(|_| Status::internal("Failed to generate JWT"))?;
-
-        // ✅ Return response
-        Ok(Response::new(LoginResponse {
-            message: "User login successfully".to_string(),
-            id: user.id.to_string(),
-            token: token.clone(),
-        }))
-    }
 
 async fn resend_verification_code(&self,request: Request<ResendVerificationRequest>,) -> Result<Response<ResendVerificationResponse>, Status> {
     let req = request.into_inner();
@@ -315,6 +212,104 @@ async fn resend_verification_code(&self,request: Request<ResendVerificationReque
     };
     Ok(Response::new(response))
 }
+
+async fn verify_user(&self, request: Request<VerifyUserRequest>) -> Result<Response<VerifyUserResponse>, Status> {
+    let req = request.into_inner();
+
+    // Fetch user_id and expiration_time from `user_verifications`
+    let verification = sqlx::query!(
+        "SELECT user_id, expiration_time FROM user_verifications WHERE verification_code = $1",
+        req.verification_code
+    )
+    .fetch_optional(&self.db)
+    .await
+    .map_err(|_| Status::internal("Database error"))?;
+
+    match verification {
+        Some(v) => {
+            let naive_current_time = Utc::now().naive_utc();
+            if naive_current_time > v.expiration_time {
+                return Err(Status::invalid_argument("Verification code expired"));
+            }
+
+            // Update user verification status
+            sqlx::query!(
+                "UPDATE users SET is_verified = true WHERE id = $1",
+                v.user_id
+            )
+            .execute(&self.db)
+            .await
+            .map_err(|_| Status::internal("Failed to update user verification status"))?;
+
+            // Remove verification record
+            sqlx::query!(
+                "DELETE FROM user_verifications WHERE verification_code = $1",
+                req.verification_code
+            )
+            .execute(&self.db)
+            .await
+            .map_err(|_| Status::internal("Failed to remove verification code"))?;
+
+            // Generate JWT token
+            let token = generate_jwt(&v.user_id, &self.jwt_secret, "user")
+                .map_err(|_| Status::internal("Failed to generate token"))?;
+
+            Ok(Response::new(VerifyUserResponse {
+                message: "User verified successfully".to_string(),
+                token,
+            }))
+        }
+        None => Err(Status::not_found("Invalid verification code")),
+    }
+}
+// Login API
+async fn login(&self, request: Request<LoginRequest>) -> Result<Response<LoginResponse>, Status> {
+        let req = request.into_inner();
+
+         // ✅ Determine which identifier is provided
+            let identifier = if !req.email.is_empty() {
+                req.email
+                }else if !req.mobile_number.is_empty() {
+                req.mobile_number
+                } else {
+                return Err(Status::invalid_argument("Please provide email or mobile number."));
+                };
+
+        // ✅ Fetch user by email, or mobile number
+        let user = sqlx::query_as!(
+            User,
+            "SELECT id, email, password, mobile_number, role , is_verified
+            FROM users WHERE email = $1 OR mobile_number = $1",
+            identifier 
+        )
+        .fetch_optional(&self.db) // ✅ Better error handling
+        .await
+        .map_err(|_| Status::internal("Database error"))?; 
+
+        // ✅ If user not found, return error
+        let user = user.ok_or_else(|| Status::unauthenticated("Email does not exist. Please sign up first.."))?;
+
+        // ✅ Verify password
+        match verify_password(&user.password, &req.password) {
+        Ok(true) => {}, // Password matches, continue
+        _ => return Err(Status::unauthenticated("Login failed. Please check your credentials.")),
+        }
+
+        if !user.is_verified.unwrap_or(false) {
+        return Err(Status::permission_denied("User not verified"));
+        }
+
+        // ✅ Generate JWT token
+        let token = generate_jwt(&user.id,user.role.as_deref().unwrap_or("user"),&self.jwt_secret)
+            .map_err(|_| Status::internal("Failed to generate JWT"))?;
+
+        // ✅ Return response
+        Ok(Response::new(LoginResponse {
+            message: "User login successfully".to_string(),
+            id: user.id.to_string(),
+            token: token.clone(),
+        }))
+    }
 
 }
 
