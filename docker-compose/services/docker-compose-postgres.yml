@@ -1,0 +1,25 @@
+version: "3.8"
+
+# author : jaali.dev
+services:
+  db:
+    image: postgres:latest
+    restart: always
+    container_name: "postgres"
+    command: postgres -c 'max_connections=200'
+    env_file:
+      - ../envs/postgres.env # for custom env to override below environment
+    environment:
+      POSTGRES_PASSWORD: "postgres" # no need for password if we set POSTGRES_HOST_AUTH_METHOD is 'trust'
+      POSTGRES_USER: "postgres"
+    ports:
+      - 5432:5432
+    volumes:
+      - ./postgres-db-data:/var/lib/postgresql/data
+  pgAdmin:
+    image: dpage/pgadmin4
+    container_name: pgAdmin
+    env_file:
+      - ../envs/postgres.env
+    ports:
+      - "8080:80"

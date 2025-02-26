@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package user;
+
+// User Authentication Service
+service UserService {
+  rpc Signup(SignupRequest) returns (SignupResponse);
+  rpc VerifyEmail(VerifyEmailRequest) returns (VerifyEmailResponse);
+  // rpc Login(LoginRequest) returns (LoginResponse);
+}
+
+// Signup Request & Response
+message SignupRequest {
+  string email = 1;
+  string mobile_number = 2;
+  string password = 3;
+  string role = 4;  // Optional, defaults to "user"
+}
+
+message SignupResponse {
+  string message = 1;
+  string id = 2;
+  
+}
+
+// Verify Email Request & Response
+message VerifyEmailRequest {
+  string verification_code = 2;
+}
+
+message VerifyEmailResponse {
+  string message = 1;
+  string token = 2;
+}
+
+// // Login Request & Response
+// message LoginRequest {
+//   string email = 1;
+//   string number = 2;
+//   string password = 3;
+// }
+
+// message LoginResponse {
+//   string token = 1;
+//   string message = 2;
+// }

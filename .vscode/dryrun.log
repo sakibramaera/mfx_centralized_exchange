@@ -1,0 +1,18 @@
+make --dry-run --always-make --keep-going --print-directory
+make: Entering directory `/Users/apple/Desktop/metaflowx/mfx_centralized_exchange'
+echo 'grpc_actix dependencies starting to install.....'
+for item in actix-web actix-cors serde_json env_logger dotenvy lazy_static tonic tokio=full prost ; do \
+		dep_name=$(echo $item | cut -d'=' -f1); \
+		features=$(echo $item | cut -d'=' -f2); \
+		if [ -n "$features" ] && [ "$features" != "$dep_name" ]; then \
+			echo "Adding $dep_name with features: $features"; \
+			cargo add $dep_name --features $features; \
+		else \
+			echo "Adding $dep_name without features"; \
+			cargo add $dep_name; \
+		fi; \
+	done
+echo 'actix dependencies installed successfully'
+cargo install sqlx-cli
+make: Leaving directory `/Users/apple/Desktop/metaflowx/mfx_centralized_exchange'
+ 

@@ -1,0 +1,21 @@
+version: '3.8'
+
+# author : jaali.dev
+services:
+  proxy:
+    image: nginx:alpine
+    restart: always # unless-stoppedy
+    container_name: proxy_nginx
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    volumes:
+      - "./proxy:/etc/nginx/templates"
+    env_file:
+      - ../envs/nginx.env
+    environment:
+      ANY: ""
+    ports:
+      - 80:80
+      - 8080:8080
+      - 8081:8081
+      - 443:443

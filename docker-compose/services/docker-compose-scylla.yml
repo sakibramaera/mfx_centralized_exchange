@@ -1,0 +1,21 @@
+version: '3.8'
+
+# author : jaali.dev
+services:
+  scylla_db:
+    image: scylladb/scylla
+    restart: always
+    container_name: 'scylla_db'
+    # command: postgres -c 'max_connections=200'
+    env_file:
+      - ../envs/scylla.env # for custom env to override below environment
+    # environment:
+    #     MONGO_INITDB_ROOT_USERNAME: 'root' 
+    #     MONGO_INITDB_ROOT_PASSWORD: 'secret'
+    ports:
+      - 9042:9042ls
+    volumes:
+      - ./scylla-db-data:/var/lib/scylla/data/
+
+
+# mongodb://root:secret@mongo:27017/
