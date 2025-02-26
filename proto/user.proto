@@ -5,8 +5,9 @@ package user;
 // User Authentication Service
 service UserService {
   rpc Signup(SignupRequest) returns (SignupResponse);
-  rpc VerifyEmail(VerifyEmailRequest) returns (VerifyEmailResponse);
-  // rpc Login(LoginRequest) returns (LoginResponse);
+  rpc VerifyUser(VerifyUserRequest) returns (VerifyUserResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc ResendVerificationCode(ResendVerificationRequest) returns (ResendVerificationResponse);
 }
 
 // Signup Request & Response
@@ -23,24 +24,32 @@ message SignupResponse {
   
 }
 
-// Verify Email Request & Response
-message VerifyEmailRequest {
-  string verification_code = 2;
+message VerifyUserRequest {
+  string verification_code = 1;
 }
 
-message VerifyEmailResponse {
+message VerifyUserResponse {
   string message = 1;
   string token = 2;
 }
 
-// // Login Request & Response
-// message LoginRequest {
-//   string email = 1;
-//   string number = 2;
-//   string password = 3;
-// }
+message LoginRequest {
+  string email = 1;          // ✅ User can provide email
+  string mobile_number = 2;  // ✅ OR mobile number
+  string password = 3;
+}
 
-// message LoginResponse {
-//   string token = 1;
-//   string message = 2;
-// }
+message LoginResponse {
+  string message = 1;
+  string id = 2;
+  string token = 3;
+}
+
+message ResendVerificationRequest {
+  string identifier = 1; // Email or Mobile Number
+}
+
+message ResendVerificationResponse {
+  bool success = 1;
+  string message = 2;
+}

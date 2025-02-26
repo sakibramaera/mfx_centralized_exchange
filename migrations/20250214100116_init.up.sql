@@ -2,22 +2,35 @@
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT UNIQUE,
-    mobile_number VARCHAR(20),
+    mobile_number VARCHAR(20) UNIQUE,
     password TEXT NOT NULL,
     role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('admin', 'user')),
-    is_verified BOOLEAN DEFAULT FALSE, -- Field to track email verification status 
+    is_verified BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Add email verification table
-CREATE TABLE email_verifications (
+CREATE TABLE user_verifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email TEXT UNIQUE NOT NULL REFERENCES users(email) ON DELETE CASCADE,
-    verification_code VARCHAR(10) NOT NULL,
-    expiration_time TIMESTAMP NOT NULL DEFAULT (NOW() + INTERVAL '15 minutes'),
-    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'verified', 'expired')), -- Track the status of the verification
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    identifier TEXT NOT NULL, -- Can be email or mobile number
+    verification_code TEXT NOT NULL UNIQUE,
+    expiration_time TIMESTAMP NOT NULL,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- CREATE TABLE email_verifications (
+--     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--     email TEXT UNIQUE NOT NULL REFERENCES users(email) ON DELETE CASCADE,
+--     verification_code TEXT NOT NULL,
+--     expiration_time TIMESTAMP NOT NULL,
+--     created_at TIMESTAMP DEFAULT NOW()
+-- );
 
+-- CREATE TABLE mobile_verifications (
+--     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--     mobile_number TEXT UNIQUE NOT NULL REFERENCES users(mobile_number) ON DELETE CASCADE,
+--     verification_code TEXT NOT NULL,
+--     expiration_time TIMESTAMP NOT NULL,
+--     created_at TIMESTAMP DEFAULT NOW()
+-- );

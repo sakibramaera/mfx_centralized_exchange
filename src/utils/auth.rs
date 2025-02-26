@@ -10,6 +10,10 @@ use lettre::transport::smtp::authentication::Credentials;
 use lettre::message::{SinglePart, header};
 use std::error::Error;
 // use tokio::runtime::Runtime;
+use reqwest::Client;
+use serde_json::json;
+use crate::env;
+use rand::Rng;
 
 
 #[derive(Serialize, Deserialize)]
@@ -55,6 +59,12 @@ pub fn generate_jwt(user_id: &Uuid,role: &str, secret: &str) -> Result<String, S
     .map_err(|_| "Failed to generate JWT".to_string())
 }
 
+pub fn generate_otp() -> String {
+    let mut rng = rand::thread_rng();
+    let otp: u32 = rng.gen_range(100_000..1_000_000); // Ensures 6-digit OTP
+    otp.to_string()
+}
+
 pub async fn send_verification_email(email: &str, verification_code: &str) -> Result<(), Box<dyn Error>> {
     // Create the email message
     let email = Message::builder()
@@ -88,3 +98,67 @@ pub async fn send_verification_email(email: &str, verification_code: &str) -> Re
 }
 
 
+pub async fn send_verification_sms(mobile_number: &str, verification_code: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let account_sid = env::var("TWILIO_ACCOUNT_SID")?;
+    let auth_token = env::var("TWILIO_AUTH_TOKEN")?;
+    let from_number = env::var("TWILIO_PHONE_NUMBER")?; // ✅ Twilio verified phone number
+
+    let url = format!("https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json", account_sid);
+
+    let client = Client::new();
+    let params = [
+        ("To", mobile_number),
+        ("From", &from_number), // ✅ Twilio number use kar rahe hain
+        ("Body", &format!("Your verification code is: {}", verification_code)),
+    ];
+
+    let res = client.post(&url)
+        .basic_auth(&account_sid, Some(&auth_token))
+        .form(&params)
+        .send()
+        .await?;
+
+   let status = res.status();  // ✅ Status ko pehle store kar lo
+let response_text = res.text().await?;  // ✅ Ab response body extract karo
+
+if status.is_success() {
+    println!("✅ SMS sent successfully to {}", mobile_number);
+    Ok(())
+} else {
+    eprintln!("❌ Twilio API Error: Status: {}, Response: {}", status, response_text);
+    Err(response_text.into())
+}
+
+}
+
+
+
+// pub async fn send_verification_sms(mobile_number: &str, verification_code: &str) -> Result<(), Box<dyn std::error::Error>> {
+//     let account_sid = env::var("TWILIO_ACCOUNT_SID")?;
+//     let auth_token = env::var("TWILIO_AUTH_TOKEN")?;
+//     let from_number = env::var("TWILIO_PHONE_NUMBER")?;
+
+//     let url = format!("https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json", account_sid);
+
+//     let client = Client::new();
+//     let params = json!({
+//         "To": mobile_number,
+//         "From": from_number,
+//         "Body": format!("Your verification code is: {}", verification_code)
+//     });
+
+//     let res = client.post(&url)
+//         .basic_auth(account_sid, Some(auth_token))
+//         .form(&params)
+//         .send()
+//         .await?;
+
+//     if res.status().is_success() {
+//         println!("SMS sent successfully to {}", mobile_number);
+//         Ok(())
+//     } else {
+//         let error_text = res.text().await?;
+//         eprintln!("Failed to send SMS: {}", error_text);
+//         Err(error_text.into())
+//     }
+// }
