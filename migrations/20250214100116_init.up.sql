@@ -6,6 +6,8 @@ CREATE TABLE users (
     password TEXT NOT NULL,
     role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('admin', 'user')),
     is_verified BOOLEAN DEFAULT FALSE,
+    is_2fa_enabled BOOLEAN DEFAULT FALSE, -- ✅ 2FA enabled or not
+    totp_secret TEXT,                     -- ✅ Google Authenticator Secret
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );

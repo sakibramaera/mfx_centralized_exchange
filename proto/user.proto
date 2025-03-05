@@ -8,6 +8,7 @@ service UserService {
   rpc VerifyUser(VerifyUserRequest) returns (VerifyUserResponse);
   rpc Login(LoginRequest) returns (LoginResponse);
   rpc ResendVerificationCode(ResendVerificationRequest) returns (ResendVerificationResponse);
+  rpc VerifyOtp(VerifyOtpRequest) returns (VerifyOtpResponse);
 }
 
 // Signup Request & Response
@@ -26,6 +27,7 @@ message SignupResponse {
 
 message VerifyUserRequest {
   string verification_code = 1;
+  string user_id = 2;
 }
 
 message VerifyUserResponse {
@@ -43,6 +45,7 @@ message LoginResponse {
   string message = 1;
   string id = 2;
   string token = 3;
+  string qr_code_url = 4;  // ✅ Add QR Code field
 }
 
 message ResendVerificationRequest {
@@ -52,4 +55,16 @@ message ResendVerificationRequest {
 message ResendVerificationResponse {
   bool success = 1;
   string message = 2;
+}
+
+// ✅ Verify OTP Request & Response
+message VerifyOtpRequest {
+  string user_id = 1;  // User ID jisko verify karna hai
+  string totp_code = 2; // Google Authenticator ka TOTP code
+  string email_otp = 3; // Email OTP jo user ne receive kiya
+}
+
+message VerifyOtpResponse {
+  string message = 1;
+  string token = 2; // JWT token agar verification successful ho
 }

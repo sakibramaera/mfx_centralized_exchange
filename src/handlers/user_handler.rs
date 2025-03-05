@@ -1,6 +1,9 @@
 use crate::models::user_model::User;
 // use crate::utils::auth::Claims;
-use crate::utils::auth::{generate_jwt, hash_password, verify_password,send_verification_email, send_verification_sms,generate_otp};
+use crate::utils::auth::{generate_jwt, hash_password,
+    verify_password,send_verification_email, 
+    send_verification_sms,generate_otp,
+    generate_totp_secret,generate_qr_code,generate_totp_uri,store_otp,get_stored_otp};
 // use jsonwebtoken::{decode, DecodingKey, Validation};
 // use sqlx::error::ErrorKind;
 use sqlx::PgPool;
@@ -12,13 +15,23 @@ use user:: user_service_server::{UserService,UserServiceServer};
 use user::{SignupRequest, SignupResponse,
     LoginRequest,LoginResponse,
     VerifyUserRequest,VerifyUserResponse,
-    ResendVerificationRequest,ResendVerificationResponse, 
+    ResendVerificationRequest,ResendVerificationResponse,
+    VerifyOtpRequest, VerifyOtpResponse,
 };
 // use rand::distributions::{Alphanumeric};
 // use rand::Rng;
 // use std::time::{Duration, SystemTime};
 // use chrono::NaiveDateTime;
 use chrono::Utc;
+use totp_rs::{TOTP, Algorithm, Secret};
+use redis::AsyncCommands;
+extern crate data_encoding;
+use data_encoding::BASE32;
+use base32::Alphabet;
+use std::str;
+use google_authenticator::GoogleAuthenticator;
+
+
 // use std::error::Error;
 
 pub mod user {
@@ -43,11 +56,11 @@ async fn signup(&self, request: Request<SignupRequest>) -> Result<Response<Signu
 
     // Ensure at least one of email or mobile_number is provided
     if req.email.is_empty() && req.mobile_number.is_empty() {
-        return Err(Status::invalid_argument("Email or mobile number must be provided"));
-    }
+            return Err(Status::invalid_argument("Email or mobile number must be provided"));
+        }
     if !req.email.is_empty() && !req.mobile_number.is_empty() {
-        return Err(Status::invalid_argument("Provide either email or mobile number, not both"));
-    }
+            return Err(Status::invalid_argument("Provide either email or mobile number, not both"));
+        }
 
     // Check if email or mobile number already exists
     if let Some(existing) = sqlx::query!(
@@ -98,7 +111,7 @@ async fn signup(&self, request: Request<SignupRequest>) -> Result<Response<Signu
     }
 
     let verification_code = generate_otp();
-    let expiration_timestamp = Utc::now().naive_utc() + chrono::Duration::minutes(15);
+    let expiration_timestamp = Utc::now().naive_utc() + chrono::Duration::minutes(5);
 
     // ✅ Insert verification record using `identifier`
     sqlx::query!(
@@ -155,7 +168,7 @@ async fn resend_verification_code(&self,request: Request<ResendVerificationReque
 
     // Generate a new verification code
     let new_verification_code = generate_otp();
-    let expiration_timestamp = Utc::now().naive_utc() + chrono::Duration::minutes(15);
+    let expiration_timestamp = Utc::now().naive_utc() + chrono::Duration::minutes(5);
 
     // Check if a verification record exists for the user
     let existing_verification = sqlx::query!(
@@ -216,10 +229,17 @@ async fn resend_verification_code(&self,request: Request<ResendVerificationReque
 async fn verify_user(&self, request: Request<VerifyUserRequest>) -> Result<Response<VerifyUserResponse>, Status> {
     let req = request.into_inner();
 
+    use uuid::Uuid; // Ensure Uuid is imported
+
+    let user_id = Uuid::parse_str(&req.user_id)
+    .map_err(|_| Status::invalid_argument("Invalid user_id format"))?;
+
+
     // Fetch user_id and expiration_time from `user_verifications`
     let verification = sqlx::query!(
-        "SELECT user_id, expiration_time FROM user_verifications WHERE verification_code = $1",
-        req.verification_code
+        "SELECT user_id, expiration_time FROM user_verifications WHERE verification_code = $1 AND user_id = $2",
+        req.verification_code,
+        user_id
     )
     .fetch_optional(&self.db)
     .await
@@ -243,8 +263,9 @@ async fn verify_user(&self, request: Request<VerifyUserRequest>) -> Result<Respo
 
             // Remove verification record
             sqlx::query!(
-                "DELETE FROM user_verifications WHERE verification_code = $1",
-                req.verification_code
+                "DELETE FROM user_verifications WHERE verification_code = $1 AND user_id = $2",
+                req.verification_code,
+                user_id
             )
             .execute(&self.db)
             .await
@@ -255,7 +276,7 @@ async fn verify_user(&self, request: Request<VerifyUserRequest>) -> Result<Respo
                 .map_err(|_| Status::internal("Failed to generate token"))?;
 
             Ok(Response::new(VerifyUserResponse {
-                message: "User verified successfully".to_string(),
+                message: "User verified and signUp successfully".to_string(),
                 token,
             }))
         }
@@ -278,7 +299,7 @@ async fn login(&self, request: Request<LoginRequest>) -> Result<Response<LoginRe
         // ✅ Fetch user by email, or mobile number
         let user = sqlx::query_as!(
             User,
-            "SELECT id, email, password, mobile_number, role , is_verified
+            "SELECT id, email, password, mobile_number, role , is_verified, is_2fa_enabled, totp_secret 
             FROM users WHERE email = $1 OR mobile_number = $1",
             identifier 
         )
@@ -287,7 +308,7 @@ async fn login(&self, request: Request<LoginRequest>) -> Result<Response<LoginRe
         .map_err(|_| Status::internal("Database error"))?; 
 
         // ✅ If user not found, return error
-        let user = user.ok_or_else(|| Status::unauthenticated("Email does not exist. Please sign up first.."))?;
+        let mut user = user.ok_or_else(|| Status::unauthenticated("Email does not exist. Please sign up first.."))?;
 
         // ✅ Verify password
         match verify_password(&user.password, &req.password) {
@@ -299,17 +320,108 @@ async fn login(&self, request: Request<LoginRequest>) -> Result<Response<LoginRe
         return Err(Status::permission_denied("User not verified"));
         }
 
-        // ✅ Generate JWT token
-        let token = generate_jwt(&user.id,user.role.as_deref().unwrap_or("user"),&self.jwt_secret)
-            .map_err(|_| Status::internal("Failed to generate JWT"))?;
+        // ✅ If 2FA is not enabled, generate a TOTP secret and enable it
+    let totp_secret = if user.is_2fa_enabled.unwrap_or(false) {
+        user.totp_secret.clone().unwrap()
+    } else {
+        let new_secret = generate_totp_secret();
+        sqlx::query!(
+            "UPDATE users SET is_2fa_enabled = TRUE, totp_secret = $1 WHERE id = $2",
+            new_secret,
+            user.id
+        )
+        .execute(&self.db)
+        .await
+        .map_err(|_| Status::internal("Failed to enable 2FA."))?;
 
-        // ✅ Return response
-        Ok(Response::new(LoginResponse {
-            message: "User login successfully".to_string(),
-            id: user.id.to_string(),
-            token: token.clone(),
-        }))
+        user.is_2fa_enabled = Some(true);
+        user.totp_secret = Some(new_secret.clone());
+         // ✅ Google Authenticator QR Code ke liye URI Generate Karein
+        let totp_uri = generate_totp_uri(&user.email.clone().unwrap(), &new_secret);
+
+        // ✅ QR Code generate karke file save karein
+        let qr_code_path = format!("./qr_codes/{}.png", user.id);
+        generate_qr_code(&totp_uri, &qr_code_path).await.unwrap();
+        new_secret
+    };
+
+    // ✅ Step 1: Generate Email OTP
+    let email_otp = generate_otp();
+    let email = user.email.clone().unwrap_or_default();
+    send_verification_email(&email, &email_otp).await;
+
+    store_otp(&email, &email_otp).await.ok();
+    
+    // ✅ Send response to user
+    Ok(Response::new(LoginResponse {
+        message: "OTP sent. Scan QR code to setup Google Authenticator.".to_string(),
+        id: user.id.to_string(),
+        qr_code_url: format!("/qr_codes/{}.png", user.id),  
+        token: "".to_string(), 
+    }))
+
     }
+
+async fn verify_otp(&self, request: Request<VerifyOtpRequest>) -> Result<Response<VerifyOtpResponse>, Status> {
+    let req = request.into_inner();
+
+   
+    let user_id = Uuid::parse_str(&req.user_id)
+        .map_err(|_| Status::invalid_argument("Invalid user ID format"))?;
+
+    // ✅ User fetch kare ID se
+    let user = sqlx::query_as!(
+        User,
+        "SELECT id, email, password, mobile_number, role, is_verified, is_2fa_enabled, totp_secret FROM users WHERE id = $1",
+        user_id
+    )
+    .fetch_optional(&self.db)
+    .await
+    .map_err(|_| Status::internal("Database error"))?
+    .ok_or_else(|| Status::unauthenticated("User not found"))?;
+
+    let totp_secret = user
+        .totp_secret
+        .clone()
+        .ok_or_else(|| Status::internal("TOTP secret not found"))?;
+
+    println!("📌 TOTP Secret from DB: {:?}", totp_secret);
+
+      // ✅ Verify TOTP Code (GoogleAuthenticator)
+    let auth = GoogleAuthenticator::new();
+    let time_slice = Utc::now().timestamp() as u64 / 30;
+    let is_totp_valid = auth.verify_code(&totp_secret, &req.totp_code, 3, time_slice);
+
+    println!("🛠 TOTP Verification Result: {}", is_totp_valid);
+
+    if !is_totp_valid {
+        return Err(Status::unauthenticated("❌ Invalid Google Authenticator Code!"));
+    }
+
+
+    // ✅ Email OTP verify kare (Redis se fetch karein)
+    let stored_otp = get_stored_otp(&user.email.clone().unwrap()).await
+        .map_err(|_| Status::internal("Failed to fetch OTP from Redis"))?;
+
+    if stored_otp.is_none() || stored_otp.as_deref() != Some(&req.email_otp) {
+        return Err(Status::unauthenticated("Invalid Email OTP"));
+    }
+
+    // ✅ OTP verify hone ke baad Redis se delete karein (Security best practice)
+    let client = redis::Client::open("redis://127.0.0.1/").map_err(|_| Status::internal("Redis connection failed"))?;
+    let mut con = client.get_async_connection().await.map_err(|_| Status::internal("Redis connection error"))?;
+    let _: () = con.del(format!("otp:{}", user.email.clone().unwrap())).await.map_err(|_| Status::internal("Failed to delete OTP"))?;
+
+    // ✅ Dono OTP pass ho gaye toh JWT token generate kare
+    let token = generate_jwt(&user.id, user.role.as_deref().unwrap_or("user"), &self.jwt_secret)
+        .map_err(|_| Status::internal("Failed to generate JWT"))?;
+
+    Ok(Response::new(VerifyOtpResponse {
+        message: "Login successful".to_string(),
+        token,
+    }))
+}
+
 
 }
 

@@ -14,6 +14,16 @@ use reqwest::Client;
 // use serde_json::json;
 use crate::env;
 use rand::Rng;
+use totp_rs::{TOTP, Algorithm};
+use base32::Alphabet;
+// use base32::encode;
+use qrcode::QrCode;
+use qrcode::render::unicode;
+use redis::AsyncCommands;
+use google_authenticator::GoogleAuthenticator;
+use google_authenticator::ErrorCorrectionLevel;
+// use qrcode::QrCode;
+// use image::Luma;
 
 
 #[derive(Serialize, Deserialize)]
@@ -118,47 +128,57 @@ pub async fn send_verification_sms(mobile_number: &str, verification_code: &str)
         .send()
         .await?;
 
-   let status = res.status();  // ✅ Status ko pehle store kar lo
-let response_text = res.text().await?;  // ✅ Ab response body extract karo
+    let status = res.status();  // ✅ Status ko pehle store kar lo
+    let response_text = res.text().await?;  // ✅ Ab response body extract karo
 
-if status.is_success() {
-    println!("✅ SMS sent successfully to {}", mobile_number);
+    if status.is_success() {
+        println!("✅ SMS sent successfully to {}", mobile_number);
+        Ok(())
+    } else {
+        eprintln!("❌ Twilio API Error: Status: {}, Response: {}", status, response_text);
+        Err(response_text.into())
+    }
+
+}
+
+pub fn generate_totp_secret() -> String {
+    let auth = GoogleAuthenticator::new();
+    auth.create_secret(32) // 32-character long base32 secret
+}
+
+pub async fn generate_qr_code(user_email: &str, secret: &str) -> Result<(), Box<dyn Error>> {
+    let auth = GoogleAuthenticator::new();
+
+    // Generate Google Authenticator-compatible OTP Auth URI
+    let otp_auth_url = auth.qr_code_url(secret, user_email, "MyApp", 200, 200, ErrorCorrectionLevel::Medium);
+
+    // Generate QR code from the URL
+    let code = QrCode::new(otp_auth_url)?;
+    let image = code.render::<unicode::Dense1x2>().build();
+
+    println!("📷 Scan this QR code:\n{}", image);
     Ok(())
-} else {
-    eprintln!("❌ Twilio API Error: Status: {}, Response: {}", status, response_text);
-    Err(response_text.into())
 }
 
+pub fn generate_totp_uri(secret: &str, email: &str) -> String {
+    format!(
+        "otpauth://totp/MyApp:{}?secret={}&issuer=MyApp&algorithm=SHA1&digits=6&period=30",
+        email, secret
+    )
 }
 
 
+pub async fn store_otp(email: &str, otp: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let client = redis::Client::open("redis://127.0.0.1/")?;
+    let mut con = client.get_async_connection().await?;
+    con.set_ex(format!("otp:{}", email), otp, 300).await?; // 300 seconds (5 minutes expiry)
+    Ok(())
+}
 
-// pub async fn send_verification_sms(mobile_number: &str, verification_code: &str) -> Result<(), Box<dyn std::error::Error>> {
-//     let account_sid = env::var("TWILIO_ACCOUNT_SID")?;
-//     let auth_token = env::var("TWILIO_AUTH_TOKEN")?;
-//     let from_number = env::var("TWILIO_PHONE_NUMBER")?;
-
-//     let url = format!("https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json", account_sid);
-
-//     let client = Client::new();
-//     let params = json!({
-//         "To": mobile_number,
-//         "From": from_number,
-//         "Body": format!("Your verification code is: {}", verification_code)
-//     });
-
-//     let res = client.post(&url)
-//         .basic_auth(account_sid, Some(auth_token))
-//         .form(&params)
-//         .send()
-//         .await?;
-
-//     if res.status().is_success() {
-//         println!("SMS sent successfully to {}", mobile_number);
-//         Ok(())
-//     } else {
-//         let error_text = res.text().await?;
-//         eprintln!("Failed to send SMS: {}", error_text);
-//         Err(error_text.into())
-//     }
-// }
+pub async fn get_stored_otp(email: &str) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    let client = redis::Client::open("redis://127.0.0.1/")?; // Redis se connect karein
+    let mut con = client.get_async_connection().await?;
+    
+    let otp: Option<String> = con.get(format!("otp:{}", email)).await?;
+    Ok(otp)
+}
