@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package auth;
+
+// User Authentication Service
+service UserService {
+  rpc Signup(SignupRequest) returns (SignupResponse);
+  rpc VerifyUser(VerifyUserRequest) returns (VerifyUserResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc ResendVerificationCode(ResendVerificationRequest) returns (ResendVerificationResponse);
+  rpc VerifyOtp(VerifyOtpRequest) returns (VerifyOtpResponse);
+}
+
+// Signup Request & Response
+message SignupRequest {
+  string email = 1;
+  string mobile_number = 2;
+  string password = 3;
+  string role = 4;  // Optional, defaults to "user"
+}
+
+message SignupResponse {
+  string message = 1;
+  string id = 2;
+  
+}
+
+message VerifyUserRequest {
+  string verification_code = 1;
+  string user_id = 2;
+}
+
+message VerifyUserResponse {
+  string message = 1;
+  string token = 2;
+}
+
+message LoginRequest {
+  string email = 1;          // ✅ User can provide email
+  string mobile_number = 2;  // ✅ OR mobile number
+  string password = 3;
+}
+
+message LoginResponse {
+  string message = 1;
+  string id = 2;
+  string token = 3;
+  string qr_code_url = 4;  // ✅ Add QR Code field
+}
+
+message ResendVerificationRequest {
+  string identifier = 1; // Email or Mobile Number
+}
+
+message ResendVerificationResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ✅ Verify OTP Request & Response
+message VerifyOtpRequest {
+  string user_id = 1;  // User ID jisko verify karna hai
+  string totp_code = 2; // Google Authenticator ka TOTP code
+  string email_otp = 3; // Email OTP jo user ne receive kiya
+}
+
+message VerifyOtpResponse {
+  string message = 1;
+  string token = 2; // JWT token agar verification successful ho
+}

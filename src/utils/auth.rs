@@ -107,7 +107,6 @@ pub async fn send_verification_email(email: &str, verification_code: &str) -> Re
     // })
 }
 
-
 pub async fn send_verification_sms(mobile_number: &str, verification_code: &str) -> Result<(), Box<dyn std::error::Error>> {
     let account_sid = env::var("TWILIO_ACCOUNT_SID")?;
     let auth_token = env::var("TWILIO_AUTH_TOKEN")?;
@@ -166,7 +165,6 @@ pub fn generate_totp_uri(secret: &str, email: &str) -> String {
         email, secret
     )
 }
-
 
 pub async fn store_otp(email: &str, otp: &str) -> Result<(), Box<dyn std::error::Error>> {
     let client = redis::Client::open("redis://127.0.0.1/")?;

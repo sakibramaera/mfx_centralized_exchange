@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package kyc;
+
+service KycService {
+  rpc SubmitKyc (KycRequest) returns (KycResponse);
+  rpc GetKycStatus (KycStatusRequest) returns (KycStatusResponse);
+}
+
+message KycRequest {
+  string user_id = 1;
+  string full_name = 2;
+  string dob = 3;
+  string address = 4;
+  string document_type = 5;
+  string document_url = 6;
+  string face_scan_url = 7;
+}
+
+message KycResponse {
+  string message = 1;
+  string kyc_id = 2;
+}
+
+message KycStatusRequest {
+  string user_id = 1;
+}
+
+message KycStatusResponse {
+  string status = 1;
+  string document_url = 2;
+  string face_scan_url = 3;
+  string created_at = 4;
+  string updated_at = 5;
+}

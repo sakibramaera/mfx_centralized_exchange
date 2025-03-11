@@ -20,19 +20,3 @@ CREATE TABLE user_verifications (
     expiration_time TIMESTAMP NOT NULL,
     created_at TIMESTAMP DEFAULT NOW()
 );
-
--- CREATE TABLE email_verifications (
---     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
---     email TEXT UNIQUE NOT NULL REFERENCES users(email) ON DELETE CASCADE,
---     verification_code TEXT NOT NULL,
---     expiration_time TIMESTAMP NOT NULL,
---     created_at TIMESTAMP DEFAULT NOW()
--- );
-
--- CREATE TABLE mobile_verifications (
---     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
---     mobile_number TEXT UNIQUE NOT NULL REFERENCES users(mobile_number) ON DELETE CASCADE,
---     verification_code TEXT NOT NULL,
---     expiration_time TIMESTAMP NOT NULL,
---     created_at TIMESTAMP DEFAULT NOW()
--- );
